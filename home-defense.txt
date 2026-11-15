@@ -1,0 +1,1261 @@
+-- Realstic Home Defense | by The Secret Lair
+-- Rayfield UI + all mods. Crosshairs from urgametips, ESP fixed, all OFF by default.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- =========================================
+-- DISCORD + CLIPBOARD
+-- =========================================
+local DISCORD = "https://discord.gg/VfychVfg2t"
+
+local function forceClipboard(text)
+    local setter = setclipboard or toclipboard or Clipboard
+    if type(setter) ~= "function" then return false end
+    local ok = pcall(setter, text)
+    return ok
+end
+
+-- Forcefully copy the Discord invite on load (retries in case clipboard isn't ready)
+task.spawn(function()
+    for _ = 1, 6 do
+        forceClipboard(DISCORD)
+        task.wait(0.4)
+    end
+end)
+
+-- =========================================
+-- LOAD RAYFIELD (guarded)
+-- =========================================
+local Rayfield
+do
+    local ok, err = pcall(function()
+        Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+    end)
+    if not ok or not Rayfield then
+        warn("[RHD] Rayfield failed: " .. tostring(err))
+        local ok2, err2 = pcall(function()
+            Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
+        end)
+        if not ok2 or not Rayfield then
+            warn("[RHD] Rayfield fallback failed: " .. tostring(err2))
+            return
+        end
+    end
+end
+
+-- =========================================
+-- WINDOW
+-- =========================================
+local Window = Rayfield:CreateWindow({
+    Name = "Realstic Home Defense | by The Secret Lair",
+    LoadingTitle = "Realstic Home Defense",
+    LoadingSubtitle = "by The Secret Lair",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "RHD",
+        FileName = "Config"
+    },
+    KeySystem = false,
+})
+
+-- =========================================
+-- CROSSHAIR
+-- =========================================
+local Crosshair = {}
+do
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "CustomCrosshair"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.Enabled = false
+    gui.Parent = PlayerGui
+
+    local root = Instance.new("Frame")
+    root.Name = "Root"
+    root.AnchorPoint = Vector2.new(0.5, 0.5)
+    root.Position = UDim2.fromScale(0.5, 0.5)
+    root.Size = UDim2.fromOffset(0, 0)
+    root.BackgroundTransparency = 1
+    root.Parent = gui
+
+    local img = Instance.new("ImageLabel")
+    img.AnchorPoint = Vector2.new(0.5, 0.5)
+    img.Position = UDim2.fromScale(0.5, 0.5)
+    img.Size = UDim2.fromOffset(32, 32)
+    img.BackgroundTransparency = 1
+    img.Visible = false
+    img.Parent = root
+
+    local cfg = {
+        Enabled = false, UseImage = false, Color = Color3.fromRGB(0, 255, 120),
+        Style = "Cross", Length = 10, Thickness = 2, Gap = 5, Dot = true,
+    }
+
+    local bars = {}
+    local STYLES = {
+        ["Cross"]   = { arms = { "Left","Right","Top","Bottom" }, dot = true },
+        ["Dot"]     = { arms = {}, dot = true },
+        ["T-Shape"] = { arms = { "Left","Right","Bottom" }, dot = true },
+        ["X"]       = { arms = { "Left","Right","Top","Bottom" }, dot = false },
+        ["Circle"]  = { arms = { "Left","Right","Top","Bottom" }, dot = true, gapMul = 1.6 },
+    }
+
+    local function makeBar(size, pos)
+        local f = Instance.new("Frame")
+        f.BackgroundColor3 = cfg.Color
+        f.BorderSizePixel = 0
+        f.AnchorPoint = Vector2.new(0.5, 0.5)
+        f.Size = size
+        f.Position = pos
+        f.Parent = root
+        bars[#bars+1] = f
+    end
+
+    function Crosshair.Rebuild()
+        for _, b in ipairs(bars) do b:Destroy() end
+        bars = {}
+        if cfg.UseImage then return end
+        local style = STYLES[cfg.Style] or STYLES["Cross"]
+        local L, T = cfg.Length, cfg.Thickness
+        local G = cfg.Gap * (style.gapMul or 1)
+        for _, arm in ipairs(style.arms) do
+            if arm == "Left" then
+                makeBar(UDim2.fromOffset(L, T), UDim2.fromOffset(-(G + L/2), 0))
+            elseif arm == "Right" then
+                makeBar(UDim2.fromOffset(L, T), UDim2.fromOffset(G + L/2, 0))
+            elseif arm == "Top" then
+                makeBar(UDim2.fromOffset(T, L), UDim2.fromOffset(0, -(G + L/2)))
+            elseif arm == "Bottom" then
+                makeBar(UDim2.fromOffset(T, L), UDim2.fromOffset(0, G + L/2))
+            end
+        end
+        if style.dot and cfg.Dot then
+            makeBar(UDim2.fromOffset(3, 3), UDim2.fromOffset(0, 0))
+        end
+    end
+
+    function Crosshair.SetEnabled(v) cfg.Enabled = v gui.Enabled = v end
+    function Crosshair.SetImage(id)
+        cfg.UseImage = true
+        for _, b in ipairs(bars) do b:Destroy() end
+        bars = {}
+        img.Image = "rbxassetid://" .. tostring(id)
+        img.Visible = true
+    end
+    function Crosshair.SetFrameStyle(s)
+        if type(s) == "table" then s = s[1] or s.Option or s.Name end
+        cfg.UseImage = false
+        img.Visible = false
+        cfg.Style = tostring(s)
+        Crosshair.Rebuild()
+    end
+    function Crosshair.SetColor(c) cfg.Color = c Crosshair.Rebuild() end
+    function Crosshair.SetDot(v) cfg.Dot = v Crosshair.Rebuild() end
+    function Crosshair.SetLength(v) cfg.Length = v Crosshair.Rebuild() end
+    function Crosshair.SetThickness(v) cfg.Thickness = v Crosshair.Rebuild() end
+    function Crosshair.SetGap(v) cfg.Gap = v Crosshair.Rebuild() end
+    function Crosshair.SetImageSize(v) img.Size = UDim2.fromOffset(v, v) end
+
+    Crosshair.Rebuild()
+end
+
+-- =========================================
+-- BUILT-IN CROSSHAIR DECALS (from urgametips)
+-- =========================================
+local DECALS = {
+    ["Aim Dot"]           = 61210994,
+    ["Aim"]               = 7051824015,
+    ["Big Aim 2"]         = 2555584348,
+    ["Red Dot Aim"]       = 240080271,
+    ["Green Dot Aim"]     = 240080505,
+    ["Red Dot Crosshair"] = 1012273002,
+    ["Dot Crosshair"]     = 3259050989,
+    ["Red Dot Cursor"]    = 9834704835,
+    ["White Crosshair"]   = 6480864064,
+    ["White Crosshair 2"] = 12898701833,
+    ["White Crosshair DH"]= 12275825245,
+    ["Blue Crosshair"]    = 9841536429,
+    ["Bright Blue"]       = 11724945237,
+    ["Pink Crosshair"]    = 11716485793,
+    ["Pink Glow"]         = 11927593271,
+    ["Purple Neon"]       = 7527551515,
+    ["Short Crosshair"]   = 2526593748,
+    ["Small Crosshair"]   = 2526607594,
+    ["High Res Crosshair"]= 10210055699,
+    ["Crosshair +"]       = 11867351018,
+    ["Crosshair + 2"]     = 11830984173,
+    ["VAL +"]             = 11810229301,
+    ["Xantares"]          = 6884107931,
+    ["s1mple_aim"]        = 6553270795,
+    ["Sniper"]            = 1489774661,
+    ["Shotgun"]           = 1478500977,
+    ["X Cross"]           = 2167271529,
+    ["Circle Crosshair"]  = 7527602679,
+    ["Triangle Crosshair"]= 10164277641,
+    ["Crosshair Block"]   = 7242005920,
+    ["Da Hood"]           = 11747019610,
+    ["Da Hood Crosshair"] = 13967529694,
+    ["DH Crosshair"]      = 11759622238,
+    ["Shadow Hedgehog"]   = 12233185690,
+    ["Hello Kitty"]       = 7397723594,
+    ["Hello Kitty Cursor"]= 11717813996,
+    ["Kuromi"]            = 9642199135,
+    ["Kuromi Crosshair"]  = 11746881034,
+    ["Cinnamoroll"]       = 11719890577,
+    ["Pompompurin"]       = 10763951232,
+    ["Keroppi"]           = 10763952275,
+    ["Pochacco"]          = 11747026200,
+    ["My Melody"]         = 11743056585,
+    ["Gengar"]            = 11759293285,
+    ["Pikachu"]           = 11754499452,
+    ["LUFFY"]             = 11759198682,
+    ["Sasuke Curse Mark"] = 11723817205,
+    ["Heart"]             = 11754247597,
+    ["Pink Heart"]        = 11754055636,
+    ["Red Heart"]         = 11752855970,
+    ["Blue Heart"]        = 11739569678,
+    ["Black Heart"]       = 11754980972,
+    ["Pixel Heart"]       = 13034143275,
+    ["Star"]              = 11754245411,
+    ["Power Star"]        = 1718840561,
+    ["Soviet Star"]       = 11121461899,
+    ["Pentagram"]         = 51838212,
+    ["Snowflake"]         = 11735801220,
+    ["Christmas Tree"]    = 11756692076,
+    ["Rudolph"]           = 11756696859,
+    ["osu! BTMC"]         = 7820635056,
+    ["osu!rover"]         = 8390115370,
+    ["Cat Cursor"]        = 11722553511,
+    ["Paw Print"]         = 11767069582,
+    ["Turtle"]            = 7590894535,
+    ["Skully"]            = 11722153703,
+    ["Anarchy"]           = 251435889,
+    ["Tesla"]             = 342632265,
+    ["Tower Battles"]     = 1171657730,
+    ["ZombKitty"]         = 11767337318,
+    ["XBOX"]              = 11759202791,
+    ["Badly Edited"]      = 12881238742,
+    ["Nice Crosshair"]    = 6647211778,
+    ["Death Crosshair"]   = 12472046162,
+}
+
+-- =========================================
+-- ESP (fixed - re-applies every heartbeat so it survives respawns)
+-- =========================================
+local ESP = {}
+do
+    local enabledPlayers, enabledNPCs = false, false
+    local playerObjs = {}
+    local npcObjs = {}
+
+    local function destroyObj(o)
+        if o.hl then o.hl:Destroy() end
+        if o.bb then o.bb:Destroy() end
+    end
+
+    local function clearPlayer(p)
+        local o = playerObjs[p]
+        if o then destroyObj(o) playerObjs[p] = nil end
+    end
+
+    local function clearNPC(model)
+        local o = npcObjs[model]
+        if o then destroyObj(o) npcObjs[model] = nil end
+    end
+
+    -- Names treated as training dummies (skipped by NPC ESP)
+    local function isDummy(model)
+        local n = string.lower(model.Name)
+        return string.find(n, "dumm", 1, true) ~= nil  -- dummy, dummies, dummys, dummy1...
+    end
+
+    local function makeHighlight(model, color, text)
+        local hl = Instance.new("Highlight")
+        hl.Adornee = model
+        hl.FillColor = color
+        hl.OutlineColor = color
+        hl.FillTransparency = 0.6
+        hl.OutlineTransparency = 0
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Parent = model
+
+        local head = model:FindFirstChild("Head") or model:FindFirstChildOfClass("BasePart")
+        local bb = Instance.new("BillboardGui")
+        bb.Adornee = head or model
+        bb.AlwaysOnTop = true
+        bb.Size = UDim2.fromOffset(200, 40)
+        bb.StudsOffset = Vector3.new(0, 2.5, 0)
+        bb.Parent = model
+
+        local label = Instance.new("TextLabel")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.fromScale(1, 1)
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 14
+        label.TextColor3 = color
+        label.Text = text
+        label.TextStrokeTransparency = 0.3
+        label.Parent = bb
+        return hl, bb, label
+    end
+
+    local function ensurePlayer(p)
+        local char = p.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not char or not hum or hum.Health <= 0 or not char:FindFirstChild("Head") then
+            clearPlayer(p)
+            return
+        end
+        local o = playerObjs[p]
+        -- rebuild if missing, orphaned, or the character model changed (respawn)
+        if not o or o.char ~= char or not o.hl or not o.hl.Parent
+            or not o.bb or not o.bb.Parent or not o.label or not o.label.Parent then
+            clearPlayer(p)
+            local color = (p.Team and p.Team.TeamColor and p.Team.TeamColor.Color) or Color3.new(1, 1, 1)
+            local hl, bb, label = makeHighlight(char, color, "")
+            o = { char = char, hl = hl, bb = bb, label = label }
+            playerObjs[p] = o
+        end
+        -- keep adornments pointed at the current parts
+        local head = char:FindFirstChild("Head")
+        if head and o.bb.Adornee ~= head then o.bb.Adornee = head end
+        if o.hl.Adornee ~= char then o.hl.Adornee = char end
+        o.label.Text = string.format("%s\n[%s] %d HP", p.DisplayName,
+            p.Team and p.Team.Name or "No Team", math.floor(hum.Health))
+    end
+
+    local function ensureNPC(model)
+        if isDummy(model) then clearNPC(model) return end
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 or not model:FindFirstChild("Head") then
+            clearNPC(model)
+            return
+        end
+        local o = npcObjs[model]
+        if not o or not o.hl or not o.hl.Parent or not o.bb or not o.bb.Parent
+            or not o.label or not o.label.Parent then
+            clearNPC(model)
+            local hl, bb, label = makeHighlight(model, Color3.fromRGB(255, 170, 60), "")
+            o = { hl = hl, bb = bb, label = label }
+            npcObjs[model] = o
+        end
+        local head = model:FindFirstChild("Head")
+        if head and o.bb.Adornee ~= head then o.bb.Adornee = head end
+        if o.hl.Adornee ~= model then o.hl.Adornee = model end
+        o.label.Text = string.format("[NPC] %s\n%d HP", model.Name, math.floor(hum.Health))
+    end
+
+    -- Runs every frame while ESP is on; re-adds anything lost to respawn/streaming.
+    local function tick()
+        if enabledPlayers then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer then ensurePlayer(p) end
+            end
+            for p in pairs(playerObjs) do
+                if not p.Parent then clearPlayer(p) end
+            end
+        end
+        if enabledNPCs then
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj)
+                    and obj:FindFirstChildOfClass("Humanoid")
+                    and not isDummy(obj) then
+                    ensureNPC(obj)
+                end
+            end
+            for m in pairs(npcObjs) do
+                if not m.Parent or isDummy(m) then clearNPC(m) end
+            end
+        end
+    end
+
+    function ESP.SetPlayersEnabled(v)
+        enabledPlayers = v
+        if v then
+            tick()
+        else
+            for p in pairs(playerObjs) do clearPlayer(p) end
+        end
+    end
+
+    function ESP.SetNPCsEnabled(v)
+        enabledNPCs = v
+        if v then
+            tick()
+        else
+            for m in pairs(npcObjs) do clearNPC(m) end
+        end
+    end
+
+    Players.PlayerAdded:Connect(function(p)
+        if enabledPlayers and p ~= LocalPlayer then ensurePlayer(p) end
+    end)
+    Players.PlayerRemoving:Connect(clearPlayer)
+    Workspace.DescendantRemoving:Connect(function(obj)
+        if npcObjs[obj] then clearNPC(obj) end
+    end)
+
+    RunService.Heartbeat:Connect(tick)
+end
+
+-- =========================================
+-- GAME MODS
+-- =========================================
+local NoSpread = {}
+do
+    local mod, origCompute, origApply, active
+    local function ensure()
+        if mod then return true end
+        local ok, m = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("GunSystem", 10)
+                :WaitForChild("Shared", 10):WaitForChild("Ballistics", 10))
+        end)
+        if ok and m then mod = m return true end
+        return false
+    end
+    function NoSpread.Enable()
+        if active then return true end
+        if not ensure() then return false end
+        active = true
+        origCompute = mod.computeSpread
+        origApply = mod.applySpread
+        mod.computeSpread = function() return 0 end
+        mod.applySpread = function(dir)
+            if typeof(dir) == "Vector3" and dir.Magnitude > 0 then return dir.Unit end
+            return dir
+        end
+        return true
+    end
+    function NoSpread.Disable()
+        if not active or not mod then return end
+        active = false
+        mod.computeSpread = origCompute
+        mod.applySpread = origApply
+    end
+end
+
+local FastFireRate = {}
+do
+    local reg, folder, originals = nil, nil, {}
+    local function ensure()
+        if reg then return true end
+        local ok, r, f = pcall(function()
+            local gs = ReplicatedStorage:WaitForChild("GunSystem", 10)
+            return require(gs:WaitForChild("Shared", 10):WaitForChild("WeaponRegistry", 10)),
+                   gs:WaitForChild("Shared", 10):WaitForChild("Weapons", 10)
+        end)
+        if ok and r and f then reg, folder = r, f return true end
+        return false
+    end
+    function FastFireRate.Set(val)
+        if not ensure() then return false end
+        for _, w in ipairs(folder:GetChildren()) do
+            local ok, def = pcall(reg.get, w.Name)
+            if ok and def then
+                if originals[def] == nil then originals[def] = def.FireInterval end
+                def.FireInterval = val
+            end
+        end
+        return true
+    end
+    function FastFireRate.Stop()
+        for def, orig in pairs(originals) do def.FireInterval = orig end
+        table.clear(originals)
+    end
+end
+
+local NoRecoil = {}
+do
+    local patched = {}
+    local BIND = "RHD_NoRecoil"
+    local ZERO_TUNING = { "RecoilMaxPitch","RecoilMinPitch","RecoilMaxRoll",
+        "RecoilCompensation","PatternMaxDeg","MaxPitchOffset" }
+    local MODULE_PATHS = {
+        {"GunSystem","Client","CameraController"},
+        {"GunSystemRHD","GunSystemReplicated","Client","CameraController"},
+    }
+    local PM_PATHS = {
+        {"GunSystem","Client","ProceduralMotion"},
+        {"GunSystemRHD","GunSystemReplicated","Client","ProceduralMotion"},
+    }
+    local PM_NOOP = { "Fire","Flinch","Jump","Land" }
+    local pmPatched = {}
+
+    local function resolve(path)
+        local node = ReplicatedStorage
+        for _, name in ipairs(path) do
+            node = node and node:FindFirstChild(name)
+            if not node then return nil end
+        end
+        return node
+    end
+
+    local function findState(cam)
+        if type(cam.getRecoilOffset) ~= "function" or not debug or not debug.getupvalues then return nil end
+        for _, v in pairs(debug.getupvalues(cam.getRecoilOffset)) do
+            if type(v) == "table" and rawget(v, "Recoil") then return v end
+        end
+        return nil
+    end
+
+    local function clearAll()
+        for _, p in ipairs(patched) do
+            local state = p.state
+            if state then
+                local recoil = rawget(state, "Recoil")
+                if type(recoil) == "table" then
+                    local spring = recoil.Spring
+                    if type(spring) == "table" then
+                        if not p.springNoop then
+                            p.springNoop = spring
+                            p.origImpulse = rawget(spring, "Impulse")
+                            spring.Impulse = function() end
+                        end
+                        spring.Position = Vector3.zero
+                        spring.Velocity = Vector3.zero
+                        spring.Target = Vector3.zero
+                    end
+                    if type(recoil.Feeds) == "table" then table.clear(recoil.Feeds) end
+                end
+                state.Climb = 0
+            end
+            if p.tuning then for key in pairs(p.origTuning) do p.tuning[key] = 0 end end
+        end
+    end
+
+    function NoRecoil.Enable()
+        if NoRecoil._on then return end
+        NoRecoil._on = true
+        for _, path in ipairs(MODULE_PATHS) do
+            local mod = resolve(path)
+            if mod and mod:IsA("ModuleScript") then
+                local ok, cam = pcall(require, mod)
+                if ok and type(cam) == "table" then
+                    local entry = { module = cam, originalGetRecoil = cam.getRecoilOffset }
+                    entry.state = findState(cam)
+                    if type(cam.getRecoilOffset) == "function" then
+                        cam.getRecoilOffset = function() return Vector3.zero end
+                    end
+                    local tuning = cam._internal and cam._internal.TUNING
+                    entry.origTuning = {}
+                    if type(tuning) == "table" then
+                        entry.tuning = tuning
+                        for _, key in ipairs(ZERO_TUNING) do
+                            if type(tuning[key]) == "number" then
+                                entry.origTuning[key] = tuning[key]
+                                tuning[key] = 0
+                            end
+                        end
+                    end
+                    table.insert(patched, entry)
+                end
+            end
+        end
+        for _, path in ipairs(PM_PATHS) do
+            local mod = resolve(path)
+            if mod and mod:IsA("ModuleScript") then
+                local ok, cls = pcall(require, mod)
+                if ok and type(cls) == "table" then
+                    local originals = {}
+                    for _, fname in ipairs(PM_NOOP) do
+                        if type(cls[fname]) == "function" then
+                            originals[fname] = cls[fname]
+                            cls[fname] = function() end
+                        end
+                    end
+                    if type(cls.TUNING) == "table" then
+                        for k, v in pairs(cls.TUNING) do
+                            if type(v) == "number" and (string.find(k, "Recoil") or string.find(k, "Kick")) then
+                                originals["TUNING." .. k] = v
+                                cls.TUNING[k] = 0
+                            end
+                        end
+                    end
+                    table.insert(pmPatched, { class = cls, originals = originals })
+                end
+            end
+        end
+        pcall(function() RunService:BindToRenderStep(BIND, Enum.RenderPriority.Last.Value, clearAll) end)
+        NoRecoil._hb = RunService.Heartbeat:Connect(clearAll)
+    end
+
+    function NoRecoil.Disable()
+        if not NoRecoil._on then return end
+        NoRecoil._on = false
+        pcall(function() RunService:UnbindFromRenderStep(BIND) end)
+        if NoRecoil._hb then NoRecoil._hb:Disconnect() NoRecoil._hb = nil end
+        for _, p in ipairs(patched) do
+            if p.springNoop then p.springNoop.Impulse = p.origImpulse end
+            p.module.getRecoilOffset = p.originalGetRecoil
+            if p.tuning then for k, v in pairs(p.origTuning) do p.tuning[k] = v end end
+        end
+        table.clear(patched)
+        for _, p in ipairs(pmPatched) do
+            for name, val in pairs(p.originals) do
+                if string.sub(name, 1, 7) == "TUNING." then
+                    p.class.TUNING[string.sub(name, 8)] = val
+                else
+                    p.class[name] = val
+                end
+            end
+        end
+        table.clear(pmPatched)
+    end
+end
+
+local NoShake = {}
+do
+    local BIND = "RHD_NoShake"
+    local MODULE_PATHS = {
+        {"GunSystem","Client","CameraController"},
+        {"GunSystemRHD","GunSystemReplicated","Client","CameraController"},
+    }
+    local ZERO_TUNING = { "ShakeYaw","ShakeRoll","ShakeNoiseGain","ShakeAimMultiplier",
+        "FlinchYaw","FlinchPitch","FlinchTrauma","LandPitch","LandDip" }
+    local NOOP_FUNCS = { "shake","flinch","kick","land" }
+    local patched = {}
+
+    local function resolve(path)
+        local node = ReplicatedStorage
+        for _, name in ipairs(path) do node = node and node:FindFirstChild(name) end
+        return node
+    end
+
+    function NoShake.Enable()
+        if NoShake._on then return end
+        NoShake._on = true
+        for _, path in ipairs(MODULE_PATHS) do
+            local mod = resolve(path)
+            if mod and mod:IsA("ModuleScript") then
+                local ok, cam = pcall(require, mod)
+                if ok and type(cam) == "table" then
+                    local originals = {}
+                    for _, fname in ipairs(NOOP_FUNCS) do
+                        if type(cam[fname]) == "function" then
+                            originals[fname] = cam[fname]
+                            cam[fname] = function() end
+                        end
+                    end
+                    local tuning = cam._internal and cam._internal.TUNING
+                    local origTuning = {}
+                    if type(tuning) == "table" then
+                        for _, key in ipairs(ZERO_TUNING) do
+                            if type(tuning[key]) == "number" then
+                                origTuning[key] = tuning[key]
+                                tuning[key] = 0
+                            end
+                        end
+                    end
+                    table.insert(patched, { module = cam, originals = originals, tuning = tuning, origTuning = origTuning })
+                end
+            end
+        end
+        pcall(function()
+            RunService:BindToRenderStep(BIND, Enum.RenderPriority.Camera.Value + 1, function()
+                for _, p in ipairs(patched) do
+                    local st = p.module._internal and p.module._internal.State
+                    if type(st) == "table" then st.Trauma = 0 st.Climb = 0 end
+                    if type(p.tuning) == "table" then
+                        for key in pairs(p.origTuning) do p.tuning[key] = 0 end
+                    end
+                end
+                local char = LocalPlayer.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.CameraOffset ~= Vector3.zero then hum.CameraOffset = Vector3.zero end
+            end)
+        end)
+    end
+
+    function NoShake.Disable()
+        if not NoShake._on then return end
+        NoShake._on = false
+        pcall(function() RunService:UnbindFromRenderStep(BIND) end)
+        for _, p in ipairs(patched) do
+            for fname, fn in pairs(p.originals) do p.module[fname] = fn end
+            if type(p.tuning) == "table" then
+                for k, v in pairs(p.origTuning) do p.tuning[k] = v end
+            end
+        end
+        table.clear(patched)
+    end
+end
+
+local Fullbright = {}
+do
+    local saved, active = {}, false
+    local PROPS = { "Ambient","OutdoorAmbient","Brightness","ClockTime","FogEnd","FogStart",
+        "GlobalShadows","EnvironmentDiffuseScale","EnvironmentSpecularScale","ShadowSoftness" }
+    function Fullbright.Enable(b)
+        if not active then
+            for _, p in ipairs(PROPS) do saved[p] = Lighting[p] end
+            active = true
+        end
+        Lighting.Ambient = Color3.fromRGB(178,178,178)
+        Lighting.OutdoorAmbient = Color3.fromRGB(178,178,178)
+        Lighting.Brightness = b or 2
+        Lighting.ClockTime = 14
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 100000
+        Lighting.FogStart = 0
+    end
+    function Fullbright.SetBrightness(b) if active then Lighting.Brightness = b end end
+    function Fullbright.Disable()
+        if not active then return end
+        for p, v in pairs(saved) do Lighting[p] = v end
+        table.clear(saved)
+        active = false
+    end
+end
+
+-- =========================================
+-- CONFIG SYSTEM (save / load named slots)
+-- =========================================
+local Config = {}
+do
+    local HttpService = game:GetService("HttpService")
+    local ROOT = "RHD"
+    local DIR = ROOT .. "/Configs"
+    local EXT = ".json"
+
+    Config._state = {}
+    Config._elements = {}
+    Config._defaults = {}
+    Config._autosave = false
+    Config._loading = false
+    Config._current = "default"
+
+    local function hasFileIO()
+        return type(writefile) == "function" and type(readfile) == "function"
+    end
+
+    local function ensureFolders()
+        if type(makefolder) == "function" then
+            if type(isfolder) ~= "function" or not isfolder(ROOT) then pcall(makefolder, ROOT) end
+            if type(isfolder) ~= "function" or not isfolder(DIR) then pcall(makefolder, DIR) end
+        end
+    end
+    pcall(ensureFolders)
+
+    local function pathFor(name)
+        return DIR .. "/" .. name .. EXT
+    end
+
+    local function ser(v)
+        if typeof(v) == "Color3" then
+            return { __c = true, r = v.R, g = v.G, b = v.B }
+        end
+        return v
+    end
+    local function deser(v)
+        if type(v) == "table" and v.__c then
+            return Color3.new(v.r, v.g, v.b)
+        end
+        return v
+    end
+
+    function Config.Set(flag, value)
+        Config._state[flag] = value
+        if Config._autosave and not Config._loading then
+            Config.SaveCurrent()
+        end
+    end
+
+    function Config.Track(flag, element, applyFn, default)
+        Config._elements[flag] = { element = element, apply = applyFn }
+        Config._defaults[flag] = default
+        if Config._state[flag] == nil then Config._state[flag] = default end
+    end
+
+    function Config.Serialize()
+        local out = {}
+        for flag, val in pairs(Config._state) do
+            out[flag] = ser(val)
+        end
+        return out
+    end
+
+    function Config.Save(name)
+        name = (name and name ~= "") and name or "default"
+        if not hasFileIO() then return false, "executor has no file IO" end
+        local ok, err = pcall(function()
+            ensureFolders()
+            writefile(pathFor(name), HttpService:JSONEncode(Config.Serialize()))
+        end)
+        return ok, err
+    end
+
+    function Config.Apply(data)
+        Config._loading = true
+        for flag, raw in pairs(data) do
+            local val = deser(raw)
+            Config._state[flag] = val
+            local entry = Config._elements[flag]
+            if entry then
+                if entry.apply then pcall(entry.apply, val) end
+                if entry.element and entry.element.Set then
+                    pcall(function() entry.element:Set(val) end)
+                end
+            end
+        end
+        Config._loading = false
+        if Config._autosave then Config.SaveCurrent() end
+    end
+
+    function Config.Load(name)
+        if not name or name == "" then return false, "no slot selected" end
+        if not hasFileIO() then return false, "executor has no file IO" end
+        if type(isfile) == "function" and not isfile(pathFor(name)) then
+            return false, "slot not found"
+        end
+        local ok, err = pcall(function()
+            local raw = readfile(pathFor(name))
+            local data = HttpService:JSONDecode(raw)
+            Config.Apply(data)
+        end)
+        return ok, err
+    end
+
+    function Config.Reset()
+        Config._loading = true
+        for flag, default in pairs(Config._defaults) do
+            Config._state[flag] = default
+            local entry = Config._elements[flag]
+            if entry then
+                if entry.apply then pcall(entry.apply, default) end
+                if entry.element and entry.element.Set then
+                    pcall(function() entry.element:Set(default) end)
+                end
+            end
+        end
+        Config._loading = false
+        if Config._autosave then Config.SaveCurrent() end
+    end
+
+    function Config.List()
+        local out = {}
+        if type(listfiles) == "function" then
+            local ok, files = pcall(listfiles, DIR)
+            if ok and type(files) == "table" then
+                for _, f in ipairs(files) do
+                    local name = tostring(f):match("([^/\\]+)" .. EXT .. "$")
+                    if name then out[#out+1] = name end
+                end
+            end
+        end
+        table.sort(out)
+        return out
+    end
+
+    function Config.Delete(name)
+        if not name or name == "" then return false, "no slot selected" end
+        if not hasFileIO() or type(delfile) ~= "function" then return false, "no file IO" end
+        if type(isfile) == "function" and not isfile(pathFor(name)) then return false, "slot not found" end
+        local ok, err = pcall(delfile, pathFor(name))
+        return ok, err
+    end
+
+    function Config.SetAutosave(v) Config._autosave = v end
+    function Config.SetCurrent(name) Config._current = name end
+    function Config.SaveCurrent() Config.Save(Config._current) end
+    function Config.HasFileIO() return hasFileIO() end
+    function Config.Dir() return DIR end
+end
+
+-- =========================================
+-- TABS
+-- =========================================
+local CombatTab = Window:CreateTab("Combat", 4483362458)
+local VisualTab = Window:CreateTab("Visuals", 4483362458)
+local ConfigTab = Window:CreateTab("Config", 4483362458)
+local MiscTab   = Window:CreateTab("Misc", 4483362458)
+
+-- Combat (all OFF)
+CombatTab:CreateSection("Gun Mods")
+
+do
+    local function applyNoSpread(v)
+        if v then
+            if not NoSpread.Enable() then
+                Rayfield:Notify({ Title = "No Spread", Content = "GunSystem not found yet", Duration = 3 })
+            end
+        else
+            NoSpread.Disable()
+        end
+    end
+    local el = CombatTab:CreateToggle({
+        Name = "No Spread", CurrentValue = false, Flag = "NoSpread",
+        Callback = function(v) Config.Set("NoSpread", v) applyNoSpread(v) end,
+    })
+    Config.Track("NoSpread", el, applyNoSpread, false)
+end
+
+do
+    local function applyNoRecoil(v) if v then NoRecoil.Enable() else NoRecoil.Disable() end end
+    local el = CombatTab:CreateToggle({
+        Name = "No Recoil", CurrentValue = false, Flag = "NoRecoil",
+        Callback = function(v) Config.Set("NoRecoil", v) applyNoRecoil(v) end,
+    })
+    Config.Track("NoRecoil", el, applyNoRecoil, false)
+end
+
+do
+    local function applyNoShake(v) if v then NoShake.Enable() else NoShake.Disable() end end
+    local el = CombatTab:CreateToggle({
+        Name = "No Camera Shake", CurrentValue = false, Flag = "NoShake",
+        Callback = function(v) Config.Set("NoShake", v) applyNoShake(v) end,
+    })
+    Config.Track("NoShake", el, applyNoShake, false)
+end
+
+do
+    local function applyFastFire(v)
+        if v then
+            if not FastFireRate.Set(Config._state.FireInterval or 0.05) then
+                Rayfield:Notify({ Title = "Fast Fire", Content = "WeaponRegistry not found", Duration = 3 })
+            end
+        else
+            FastFireRate.Stop()
+        end
+    end
+    local el = CombatTab:CreateToggle({
+        Name = "Fast Fire Rate", CurrentValue = false, Flag = "FastFire",
+        Callback = function(v) Config.Set("FastFire", v) applyFastFire(v) end,
+    })
+    Config.Track("FastFire", el, applyFastFire, false)
+end
+
+do
+    local function applyInterval(v) FastFireRate.Set(v) end
+    local el = CombatTab:CreateSlider({
+        Name = "Fire Interval", Range = { 0.01, 1 }, Increment = 0.01, Suffix = "s",
+        CurrentValue = 0.05, Flag = "FireInterval",
+        Callback = function(v) Config.Set("FireInterval", v) applyInterval(v) end,
+    })
+    Config.Track("FireInterval", el, applyInterval, 0.05)
+end
+
+-- Visuals - Crosshair (OFF)
+VisualTab:CreateSection("Crosshair")
+
+do
+    local function apply(v) Crosshair.SetEnabled(v) end
+    local el = VisualTab:CreateToggle({
+        Name = "Custom Crosshair", CurrentValue = false, Flag = "CrosshairOn",
+        Callback = function(v) Config.Set("CrosshairOn", v) apply(v) end,
+    })
+    Config.Track("CrosshairOn", el, apply, false)
+end
+
+do
+    local function apply(v)
+        local sel = type(v) == "table" and (v[1] or v.Option) or v
+        if sel then Crosshair.SetFrameStyle(sel) end
+    end
+    local el = VisualTab:CreateDropdown({
+        Name = "Frame Style",
+        Options = { "Cross", "Dot", "T-Shape", "X", "Circle" },
+        CurrentOption = { "Cross" }, Flag = "CrosshairStyle",
+        Callback = function(opt)
+            local sel = type(opt) == "table" and (opt[1] or opt.Option) or opt
+            Config.Set("CrosshairStyle", sel)
+            if sel then Crosshair.SetFrameStyle(sel) end
+        end,
+    })
+    Config.Track("CrosshairStyle", el, apply, "Cross")
+end
+
+do
+    local function apply(v)
+        if v and DECALS[v] then Crosshair.SetImage(DECALS[v]) end
+    end
+    local el = VisualTab:CreateDropdown({
+        Name = "Decal Crosshair",
+        Options = {
+            "Aim Dot", "Aim", "Big Aim 2", "Red Dot Aim", "Green Dot Aim",
+            "Red Dot Crosshair", "Dot Crosshair", "Red Dot Cursor",
+            "White Crosshair", "White Crosshair 2", "White Crosshair DH",
+            "Blue Crosshair", "Bright Blue", "Pink Crosshair", "Pink Glow",
+            "Purple Neon", "Short Crosshair", "Small Crosshair", "High Res Crosshair",
+            "Crosshair +", "Crosshair + 2", "VAL +", "Xantares", "s1mple_aim",
+            "Sniper", "Shotgun", "X Cross", "Circle Crosshair", "Triangle Crosshair",
+            "Crosshair Block", "Da Hood", "Da Hood Crosshair", "DH Crosshair",
+            "Shadow Hedgehog", "Hello Kitty", "Hello Kitty Cursor", "Kuromi",
+            "Kuromi Crosshair", "Cinnamoroll", "Pompompurin", "Keroppi", "Pochacco",
+            "My Melody", "Gengar", "Pikachu", "LUFFY", "Sasuke Curse Mark",
+            "Heart", "Pink Heart", "Red Heart", "Blue Heart", "Black Heart",
+            "Pixel Heart", "Star", "Power Star", "Soviet Star", "Pentagram",
+            "Snowflake", "Christmas Tree", "Rudolph", "osu! BTMC", "osu!rover",
+            "Cat Cursor", "Paw Print", "Turtle", "Skully", "Anarchy", "Tesla",
+            "Tower Battles", "ZombKitty", "XBOX", "Badly Edited", "Nice Crosshair",
+            "Death Crosshair",
+        },
+        CurrentOption = { "Aim Dot" }, Flag = "DecalPick",
+        Callback = function(opt)
+            local sel = type(opt) == "table" and (opt[1] or opt.Option) or opt
+            Config.Set("DecalPick", sel)
+            if sel and DECALS[sel] then
+                Crosshair.SetImage(DECALS[sel])
+                Rayfield:Notify({ Title = "Crosshair", Content = sel .. " applied", Duration = 2 })
+            end
+        end,
+    })
+    Config.Track("DecalPick", el, apply, "Aim Dot")
+end
+
+do
+    local function apply(v)
+        if v then Crosshair.SetImage(DECALS["Aim Dot"]) else Crosshair.SetFrameStyle("Cross") end
+    end
+    local el = VisualTab:CreateToggle({
+        Name = "Preview Decal (image mode)", CurrentValue = false, Flag = "DecalPreview",
+        Callback = function(v) Config.Set("DecalPreview", v) apply(v) end,
+    })
+    Config.Track("DecalPreview", el, apply, false)
+end
+
+do
+    local function apply(v) Crosshair.SetImageSize(v) end
+    local el = VisualTab:CreateSlider({
+        Name = "Image Size", Range = { 8, 128 }, Increment = 1, Suffix = "px",
+        CurrentValue = 32, Flag = "ImageSize",
+        Callback = function(v) Config.Set("ImageSize", v) apply(v) end,
+    })
+    Config.Track("ImageSize", el, apply, 32)
+end
+
+do
+    local function apply(v) Crosshair.SetLength(v) end
+    local el = VisualTab:CreateSlider({
+        Name = "Crosshair Length", Range = { 2, 40 }, Increment = 1,
+        CurrentValue = 10, Flag = "CrossLen",
+        Callback = function(v) Config.Set("CrossLen", v) apply(v) end,
+    })
+    Config.Track("CrossLen", el, apply, 10)
+end
+
+do
+    local function apply(v) Crosshair.SetThickness(v) end
+    local el = VisualTab:CreateSlider({
+        Name = "Crosshair Thickness", Range = { 1, 10 }, Increment = 1,
+        CurrentValue = 2, Flag = "CrossThick",
+        Callback = function(v) Config.Set("CrossThick", v) apply(v) end,
+    })
+    Config.Track("CrossThick", el, apply, 2)
+end
+
+do
+    local function apply(v) Crosshair.SetGap(v) end
+    local el = VisualTab:CreateSlider({
+        Name = "Crosshair Gap", Range = { 0, 30 }, Increment = 1,
+        CurrentValue = 5, Flag = "CrossGap",
+        Callback = function(v) Config.Set("CrossGap", v) apply(v) end,
+    })
+    Config.Track("CrossGap", el, apply, 5)
+end
+
+do
+    local function apply(v) Crosshair.SetDot(v) end
+    local el = VisualTab:CreateToggle({
+        Name = "Crosshair Dot", CurrentValue = true, Flag = "CrossDot",
+        Callback = function(v) Config.Set("CrossDot", v) apply(v) end,
+    })
+    Config.Track("CrossDot", el, apply, true)
+end
+
+do
+    local function apply(c) Crosshair.SetColor(c) end
+    local el = VisualTab:CreateColorPicker({
+        Name = "Crosshair Color", Color = Color3.fromRGB(0, 255, 120), Flag = "CrossColor",
+        Callback = function(c) Config.Set("CrossColor", c) apply(c) end,
+    })
+    Config.Track("CrossColor", el, apply, Color3.fromRGB(0, 255, 120))
+end
+
+-- Visuals - ESP (OFF)
+VisualTab:CreateSection("ESP")
+
+do
+    local function apply(v) ESP.SetPlayersEnabled(v) end
+    local el = VisualTab:CreateToggle({
+        Name = "Player ESP", CurrentValue = false, Flag = "PlayerESP",
+        Callback = function(v) Config.Set("PlayerESP", v) apply(v) end,
+    })
+    Config.Track("PlayerESP", el, apply, false)
+end
+
+do
+    local function apply(v) ESP.SetNPCsEnabled(v) end
+    local el = VisualTab:CreateToggle({
+        Name = "NPC / Bot ESP", CurrentValue = false, Flag = "NpcESP",
+        Callback = function(v) Config.Set("NpcESP", v) apply(v) end,
+    })
+    Config.Track("NpcESP", el, apply, false)
+end
+
+-- Visuals - Lighting (OFF)
+VisualTab:CreateSection("Lighting")
+
+do
+    local function apply(v) if v then Fullbright.Enable(Config._state.FbBright or 2) else Fullbright.Disable() end end
+    local el = VisualTab:CreateToggle({
+        Name = "Fullbright", CurrentValue = false, Flag = "Fullbright",
+        Callback = function(v) Config.Set("Fullbright", v) apply(v) end,
+    })
+    Config.Track("Fullbright", el, apply, false)
+end
+
+do
+    local function apply(v) Fullbright.SetBrightness(v) end
+    local el = VisualTab:CreateSlider({
+        Name = "Fullbright Brightness", Range = { 0.5, 10 }, Increment = 0.5,
+        CurrentValue = 2, Flag = "FbBright",
+        Callback = function(v) Config.Set("FbBright", v) apply(v) end,
+    })
+    Config.Track("FbBright", el, apply, 2)
+end
+
+-- =========================================
+-- CONFIG TAB
+-- =========================================
+ConfigTab:CreateSection("Save / Load Slots")
+
+ConfigTab:CreateInput({
+    Name = "Config Name",
+    CurrentValue = "default",
+    PlaceholderText = "enter slot name, then Save",
+    RemoveTextAfterFocusLost = false,
+    Flag = "CfgName",
+    Callback = function(text)
+        if text and text ~= "" then Config.SetCurrent(text) end
+    end,
+})
+
+local ConfigDropdown
+local function refreshList()
+    if not ConfigDropdown then return end
+    local list = Config.List()
+    if #list == 0 then list = { "(no slots)" } end
+    pcall(function() ConfigDropdown:Refresh(list) end)
+end
+
+ConfigDropdown = ConfigTab:CreateDropdown({
+    Name = "Saved Slots",
+    Options = (function()
+        local l = Config.List()
+        if #l == 0 then l = { "(no slots)" } end
+        return l
+    end)(),
+    CurrentOption = { "default" },
+    Flag = "CfgSlot",
+    Callback = function(opt)
+        local sel = type(opt) == "table" and (opt[1] or opt.Option) or opt
+        if sel and sel ~= "(no slots)" then Config.SetCurrent(sel) end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Save Current Settings",
+    Callback = function()
+        local ok, err = Config.Save(Config._current)
+        if ok then
+            refreshList()
+            Rayfield:Notify({ Title = "Config", Content = "Saved slot: " .. Config._current, Duration = 3 })
+        else
+            Rayfield:Notify({ Title = "Config", Content = "Save failed: " .. tostring(err), Duration = 4 })
+        end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Load Selected Slot",
+    Callback = function()
+        local ok, err = Config.Load(Config._current)
+        if ok then
+            Rayfield:Notify({ Title = "Config", Content = "Loaded slot: " .. Config._current, Duration = 3 })
+        else
+            Rayfield:Notify({ Title = "Config", Content = "Load failed: " .. tostring(err), Duration = 4 })
+        end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Delete Selected Slot",
+    Callback = function()
+        local ok, err = Config.Delete(Config._current)
+        if ok then
+            refreshList()
+            Rayfield:Notify({ Title = "Config", Content = "Deleted slot: " .. Config._current, Duration = 3 })
+        else
+            Rayfield:Notify({ Title = "Config", Content = "Delete failed: " .. tostring(err), Duration = 4 })
+        end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "Refresh Slot List",
+    Callback = function() refreshList() end,
+})
+
+ConfigTab:CreateSection("Utility")
+
+ConfigTab:CreateButton({
+    Name = "Reset All To Defaults",
+    Callback = function()
+        Config.Reset()
+        Rayfield:Notify({ Title = "Config", Content = "Reset to defaults", Duration = 3 })
+    end,
+})
+
+ConfigTab:CreateToggle({
+    Name = "Auto-save On Change",
+    CurrentValue = false,
+    Flag = "AutoSave",
+    Callback = function(v) Config.SetAutosave(v) end,
+})
+
+ConfigTab:CreateLabel("Slots stored in: " .. Config.Dir())
+if not Config.HasFileIO() then
+    ConfigTab:CreateLabel("Note: executor has no file IO")
+end
+
+-- Misc
+MiscTab:CreateSection("Info")
+MiscTab:CreateLabel("Realstic Home Defense")
+MiscTab:CreateLabel("by The Secret Lair")
+
+MiscTab:CreateSection("Community")
+MiscTab:CreateLabel("Discord: " .. DISCORD)
+MiscTab:CreateButton({
+    Name = "Copy Discord Invite",
+    Callback = function()
+        if forceClipboard(DISCORD) then
+            Rayfield:Notify({ Title = "Discord", Content = "Invite copied to clipboard", Duration = 3 })
+        else
+            Rayfield:Notify({ Title = "Discord", Content = "Clipboard unavailable", Duration = 3 })
+        end
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Destroy UI",
+    Callback = function() Window:Destroy() end,
+})
+
+Rayfield:Notify({
+    Title = "Realstic Home Defense",
+    Content = "Loaded. All features OFF by default.",
+    Duration = 4,
+})
+
+Rayfield:Notify({
+    Title = "Discord",
+    Content = "Invite copied to clipboard!",
+    Duration = 4,
+})
